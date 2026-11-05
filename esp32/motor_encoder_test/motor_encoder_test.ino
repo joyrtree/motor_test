@@ -40,7 +40,7 @@ const int ENC_R_B = 12;
 // ---------- 설정 ----------
 const unsigned long WATCHDOG_MS = 300;   // 명령이 끊기면 정지하는 시간
 const unsigned long STATUS_MS   = 50;    // 상태 보고 주기
-const size_t LINE_MAX = 64;
+const size_t RX_LINE_MAX = 64;
 
 // ---------- 상태 ----------
 volatile int32_t encLeft = 0;
@@ -53,7 +53,7 @@ unsigned long lastCommandMs = 0;
 unsigned long lastStatusMs = 0;
 uint32_t checksumErrors = 0;
 
-char lineBuf[LINE_MAX];
+char lineBuf[RX_LINE_MAX];
 size_t lineLen = 0;
 
 // ---------- 엔코더 인터럽트 (A상 변화마다 B상으로 방향 판단, 2체배) ----------
@@ -141,7 +141,7 @@ void readSerial() {
       lineBuf[lineLen] = '\0';
       if (lineLen > 0) handleLine(lineBuf);
       lineLen = 0;
-    } else if (lineLen < LINE_MAX - 1) {
+    } else if (lineLen < RX_LINE_MAX - 1) {
       lineBuf[lineLen++] = c;
     } else {
       lineLen = 0;                       // 너무 긴 줄은 버림
