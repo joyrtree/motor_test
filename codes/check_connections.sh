@@ -46,7 +46,9 @@ fi
 
 echo
 echo "== 4. 카메라 =="
-if ls /dev/video* >/dev/null 2>&1; then ok "$(ls /dev/video* | tr '\n' ' ')"; else warn "/dev/video* 없음 -> 리본케이블 방향/커넥터 확인"; fi
+# /dev/video10~31 은 라즈베리파이 내장 코덱/ISP 라서 카메라가 없어도 보임. 카메라 센서는 보통 /dev/video0~9
+cams=$(ls /dev/video[0-9] 2>/dev/null | tr '\n' ' ')
+if [ -n "$cams" ]; then ok "카메라 장치: $cams"; else warn "카메라 센서 인식 안 됨 (video10~31 은 내장 코덱이라 무시) -> 리본케이블 방향, config.txt 의 camera_auto_detect=1 확인"; fi
 
 echo
 echo "== 5. ROS 2 =="

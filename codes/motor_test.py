@@ -97,25 +97,37 @@ def candidate_ports() -> List[str]:
     return out
 
 
-def looks_like_esp32(port: str, seconds: float = 1.5) -> bool:
-    """115200 으로 열어서 체크섬 맞는 '$E,' 줄이 오면 ESP32 로 판단 (레이더는 256000 바이너리라 안 걸림)."""
+def looks_like_esp32(port: str, seconds: float = 3.0):
+    """115200 으로 열어서 체크섬 맞는 '$E,' 줄이 오면 ESP32 로 판단 (레이더는 256000 바이너리라 안 걸림).
+    반환: (찾음 여부, 받은 데이터 예시 또는 오류 메시지)"""
+    sample = ""
+    total = 0
     try:
         with serial.Serial(port, BAUD, timeout=0.2) as s:
-            deadline = time.monotonic() + seconds
+            deadline = time.monotonic() + seconds   # 포트를 열 때 ESP32 가 리셋될 수 있어서 넉넉히 기다림
             while time.monotonic() < deadline:
-                fields = parse_line(s.readline())
+                raw = s.readline()
+                total += len(raw)
+                fields = parse_line(raw)
                 if fields and parse_status(fields):
-                    return True
-    except (serial.SerialException, OSError):
-        return False
-    return False
+                    return True, ""
+                text = raw.decode("utf-8", "replace").strip()
+                if text and not sample:
+                    sample = text[:70]
+    except (serial.SerialException, OSError) as exc:
+        return False, "포트 열기 실패: {}".format(exc)
+    if total == 0:
+        return False, "3초 동안 아무 데이터도 안 옴"
+    return False, "받은 데이터: {}".format(sample or "(글자가 아닌 데이터 {}바이트)".format(total))
 
 
 def find_esp32() -> Optional[str]:
     for port in candidate_ports():
         print("  포트 확인 중: {}".format(port))
-        if looks_like_esp32(port):
+        found, info = looks_like_esp32(port)
+        if found:
             return port
+        print("    -> ESP32 테스트 펌웨어 아님. {}".format(info))
     return None
 
 
@@ -210,9 +222,11 @@ def main() -> int:
     port = args.port or find_esp32()
     if not port:
         print("ESP32 를 못 찾았습니다.")
-        print("  - ESP32 'UART' 포트에 USB 케이블이 꽂혀 있는지")
-        print("  - motor_encoder_test.ino 를 업로드했는지")
-        print("  - ls -l /dev/serial/by-id/ 로 장치가 보이는지 확인하세요")
+        print("  - '받은 데이터' 에 다른 글자(예: 1. 좌측만 정회전)가 보이면 예전 코드가 들어 있는 것")
+        print("    -> esp32/motor_encoder_test/motor_encoder_test.ino 를 다시 업로드")
+        print("  - '아무 데이터도 안 옴' 이면: 업로드 안 됨, 또는 Arduino IDE 툴 메뉴의")
+        print("    'USB CDC On Boot' 가 Enabled -> Disabled 로 바꾸고 다시 업로드")
+        print("  - ESP32 는 'UART' 라고 적힌 USB 포트에 꽂기")
         return 1
     print("  ESP32 포트: {}".format(port))
 
