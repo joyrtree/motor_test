@@ -137,6 +137,8 @@ class Esp32Link:
         self.ser = serial.Serial(port, BAUD, timeout=0.05)
         self.status: Optional[Status] = None
         self.bad_lines = 0
+        self.raw_samples: List[str] = []
+        self.raw_bytes = 0
 
     def send_motor(self, left: int, right: int) -> None:
         self.ser.write(make_line("M,{},{}".format(int(left), int(right))))
@@ -147,10 +149,13 @@ class Esp32Link:
     def poll(self) -> None:
         while self.ser.in_waiting:
             raw = self.ser.readline()
+            self.raw_bytes += len(raw)
             fields = parse_line(raw)
             if fields is None:
                 if raw.strip():
                     self.bad_lines += 1
+                    if len(self.raw_samples) < 5:
+                        self.raw_samples.append(raw.decode("utf-8", "replace").strip()[:70])
                 continue
             if fields[0] == "E":
                 st = parse_status(fields)
@@ -241,11 +246,19 @@ def main() -> int:
     try:
         print("\n== 2. 통신 확인 ==")
         t0 = time.monotonic()
-        while link.status is None and time.monotonic() - t0 < 2.0:
+        while link.status is None and time.monotonic() - t0 < 4.0:   # 포트를 열 때 ESP32 가 리셋될 수 있음
             link.poll()
             time.sleep(0.02)
         if link.status is None:
-            print("  상태 메시지가 안 옵니다. 보드 리셋(RST) 후 다시 실행하세요.")
+            print("  상태 메시지가 안 옵니다.")
+            if link.raw_bytes == 0:
+                print("  4초 동안 아무 데이터도 안 옴 -> 펌웨어 업로드가 안 됐거나, ESP32 가 멈춰 있음")
+                print("  -> 업로드를 다시 하고, 끝에 'Hard resetting' 이 나왔는지 확인. 그래도 안 되면 ESP32 RESET 버튼")
+            else:
+                print("  받은 데이터 (테스트 펌웨어 형식 아님):")
+                for line in link.raw_samples:
+                    print("    | {}".format(line))
+                print("  -> 예전 코드가 들어 있거나 업로드가 안 된 것. motor_encoder_test.ino 다시 업로드")
             return 1
         print("  OK: ESP32 상태 수신 (체크섬 오류 누적 {}회)".format(link.status.checksum_errors))
         link.reset_encoders()
